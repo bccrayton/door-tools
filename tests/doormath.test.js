@@ -72,6 +72,64 @@ test('overlay pair subtracts the pair gap before splitting', () => {
   assert.equal(F.format(size.height), '21');
 });
 
+// --- Drawer fronts -----------------------------------------------------------
+
+test('inset drawer front sizes like a single door', () => {
+  const s = settings();
+  const res = DM.computeOpening(s, {
+    label: 'D1', width: F.parse('15'), height: F.parse('6'), type: 'drawer', qty: 1
+  });
+  assert.equal(F.format(res.door.width), '14 13/16');
+  assert.equal(F.format(res.door.height), '5 13/16');
+  assert.equal(res.doorCount, 1);
+  assert.equal(res.kind, 'drawer');
+});
+
+test('five-piece drawer front produces stiles, rails, and a panel', () => {
+  const s = settings();
+  const res = DM.computeOpening(s, {
+    label: 'D1', width: F.parse('24'), height: F.parse('8'), type: 'drawer', qty: 1
+  });
+  assert.deepEqual(res.parts.map(p => p.part), ['Stile', 'Rail', 'Panel']);
+  assert.deepEqual(res.warnings, []);
+});
+
+test('slab drawer front is one full-size piece of frame-thickness stock', () => {
+  const s = settings({ drawerStyle: 'slab' });
+  const res = DM.computeOpening(s, {
+    label: 'D1', width: F.parse('15'), height: F.parse('6'), type: 'drawer', qty: 1
+  });
+  assert.equal(res.parts.length, 1);
+  const slab = res.parts[0];
+  assert.equal(slab.part, 'Slab front');
+  assert.equal(F.format(slab.width), '14 13/16');
+  assert.equal(F.format(slab.length), '5 13/16');
+  assert.equal(F.format(slab.thickness), '3/4');
+  assert.equal(slab.material, 'Slab stock');
+});
+
+test('a shallow five-piece drawer front warns instead of emitting a negative panel', () => {
+  const s = settings(); // 2 1/4 rails: a 4" tall front cannot hold two rails
+  const res = DM.computeOpening(s, {
+    label: 'D1', width: F.parse('15'), height: F.parse('4'), type: 'drawer', qty: 1
+  });
+  assert.ok(res.warnings.length > 0);
+  // ...but the same front as a slab is fine
+  const slab = DM.computeOpening(settings({ drawerStyle: 'slab' }), {
+    label: 'D1', width: F.parse('15'), height: F.parse('4'), type: 'drawer', qty: 1
+  });
+  assert.deepEqual(slab.warnings, []);
+});
+
+test('legacy openings without a type still compute (doorsAcross migration)', () => {
+  const s = settings();
+  const pair = DM.computeOpening(s, {
+    label: 'Old', width: F.parse('30'), height: F.parse('20'), doorsAcross: 2, qty: 1
+  });
+  assert.equal(pair.kind, 'pair');
+  assert.equal(pair.doorCount, 2);
+});
+
 // --- Warnings ---------------------------------------------------------------
 
 test('impossible openings produce warnings, not nonsense parts', () => {

@@ -73,7 +73,8 @@
     parts.push(rect(padL, padT, frameW, frameH, COLORS.frame, COLORS.frameEdge, 1.5, 3));
     parts.push(rect(ox, oy, ow * s, oh * s, COLORS.interior, COLORS.frameEdge, 1));
 
-    // doors
+    // doors / drawer fronts
+    var slab = comp.kind === 'drawer' && settings.drawerStyle === 'slab';
     for (var i = 0; i < n; i++) {
       var dx, dy;
       if (settings.mode === 'overlay') {
@@ -85,7 +86,7 @@
         dx = ox + (gap + i * (dw + gap)) * s;
         dy = oy + gap * s;
       }
-      parts.push(doorSVG(dx, dy, dw * s, dh * s, stileW * s, railW * s));
+      parts.push(doorSVG(dx, dy, dw * s, dh * s, stileW * s, railW * s, slab));
     }
 
     // overlay mode: show the hidden opening boundary through the door
@@ -117,9 +118,17 @@
   }
 
   /** One shaker door: frame with recessed panel and shadow line. */
-  function doorSVG(x, y, w, h, stileW, railW) {
+  function doorSVG(x, y, w, h, stileW, railW, slab) {
     var out = [];
     out.push(rect(x, y, w, h, COLORS.doorWood, COLORS.doorEdge, 1.5, 1.5));
+    if (slab) {
+      // slab front: plain face, just a subtle edge highlight
+      if (w > 14 && h > 14) {
+        out.push('<rect x="' + (x + 3) + '" y="' + (y + 3) + '" width="' + (w - 6) +
+          '" height="' + (h - 6) + '" fill="none" stroke="#ffffff33" stroke-width="1.5"/>');
+      }
+      return out.join('');
+    }
     var pw = w - 2 * stileW;
     var ph = h - 2 * railW;
     if (pw > 2 && ph > 2) {
@@ -184,6 +193,65 @@
     return out.join('');
   }
 
+  // --------------------------------------------------------------- boards
+
+  /**
+   * One frame-stock board drawn horizontally: length across, width down.
+   * board: one entry of BoardMath.packBoards().boards (1/64th units)
+   * scale: px per inch
+   */
+  function boardSVG(board, scale) {
+    var pad = 4;
+    var lenIn = board.length / 64;
+    var widIn = board.width / 64;
+    var trimIn = board.endTrim / 64;
+    var W = lenIn * scale + 2 * pad;
+    var H = widIn * scale + 2 * pad;
+    var out = [];
+    out.push('<svg xmlns="http://www.w3.org/2000/svg" width="' + Math.ceil(W) +
+      '" height="' + Math.ceil(H) + '" viewBox="0 0 ' + Math.ceil(W) + ' ' + Math.ceil(H) +
+      '" role="img" font-family="inherit">');
+    out.push(rect(pad, pad, lenIn * scale, widIn * scale, COLORS.sheet, COLORS.sheetEdge, 1.5, 2));
+
+    // end-trim zones
+    if (trimIn > 0) {
+      ['0', String((lenIn - trimIn) * scale)].forEach(function (off) {
+        out.push('<rect x="' + (pad + parseFloat(off)) + '" y="' + pad +
+          '" width="' + (trimIn * scale) + '" height="' + (widIn * scale) +
+          '" fill="#00000012" stroke="' + COLORS.trimDash +
+          '" stroke-width="1" stroke-dasharray="3 3"/>');
+      });
+    }
+
+    var x0 = pad + trimIn * scale; // start of usable region
+    board.strips.forEach(function (strip) {
+      var y = pad + (strip.y / 64) * scale;
+      var h = (strip.wclass / 64) * scale;
+      strip.segments.forEach(function (seg) {
+        var x = x0 + (seg.x / 64) * scale;
+        var w = (seg.len / 64) * scale;
+        out.push(rect(x, y, w, h, COLORS.part, COLORS.partEdge, 1));
+        if (w > 46 && h > 11) {
+          out.push('<text x="' + (x + w / 2) + '" y="' + (y + h / 2 + 3) +
+            '" text-anchor="middle" font-size="9" fill="#5a4326">' +
+            esc(shorten(seg.label, Math.floor(w / 6.5)) + ' ' + F.format(F.frac(seg.len, 64))) +
+            '</text>');
+        }
+      });
+    });
+
+    // remaining un-ripped width, shaded as offcut
+    var ripped = (board.usedRipWidth || 0) / 64;
+    if (ripped < widIn - 0.05) {
+      out.push('<rect x="' + pad + '" y="' + (pad + ripped * scale) +
+        '" width="' + (lenIn * scale) + '" height="' + ((widIn - ripped) * scale) +
+        '" fill="#00000010"/>');
+    }
+
+    out.push('</svg>');
+    return out.join('');
+  }
+
   // --------------------------------------------------------------- helpers
 
   function rect(x, y, w, h, fill, stroke, sw, rx) {
@@ -220,7 +288,7 @@
     return s.length > max ? s.slice(0, Math.max(1, max - 1)) + '…' : s;
   }
 
-  var API = { cabinetSVG: cabinetSVG, sheetSVG: sheetSVG };
+  var API = { cabinetSVG: cabinetSVG, sheetSVG: sheetSVG, boardSVG: boardSVG };
 
   if (typeof module !== 'undefined' && module.exports) {
     module.exports = API;

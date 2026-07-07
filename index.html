@@ -70,6 +70,13 @@
         <input id="set-panelThickness" data-setting="panelThickness" inputmode="text" spellcheck="false">
       </div>
       <div class="field">
+        <label for="set-drawerStyle">Drawer fronts</label>
+        <select id="set-drawerStyle" data-setting-select="drawerStyle">
+          <option value="fivepiece" selected>Five-piece (shaker)</option>
+          <option value="slab">Slab</option>
+        </select>
+      </div>
+      <div class="field">
         <label for="set-roundDenom">Round cut list to</label>
         <select id="set-roundDenom" data-setting-int="roundDenom">
           <option value="16">nearest 1/16"</option>
@@ -89,9 +96,9 @@
             <th>Label</th>
             <th>Opening W</th>
             <th>Opening H</th>
-            <th>Doors</th>
+            <th>Type</th>
             <th>Qty</th>
-            <th>Door size (each)</th>
+            <th>Front size (each)</th>
             <th class="no-print"></th>
           </tr>
         </thead>
@@ -182,7 +189,8 @@
         <label for="sheet-source">What to nest</label>
         <select id="sheet-source">
           <option value="panels">Panels from cut list</option>
-          <option value="doors">Whole doors (slab / MDF)</option>
+          <option value="slabs">Slab drawer fronts from cut list</option>
+          <option value="doors">Whole doors &amp; fronts (slab / MDF)</option>
           <option value="custom">Custom part size</option>
         </select>
       </div>
@@ -281,6 +289,24 @@
     </div>
     <p class="summary-line" id="inventory-summary"></p>
   </div>
+
+  <div class="card">
+    <h2>Board optimizer <span class="hint">— rips your frame-stock boards into strips, then crosscuts the project's stiles and rails onto them</span></h2>
+    <div class="settings-grid no-print">
+      <div class="field">
+        <label for="board-kerf">Saw kerf</label>
+        <input id="board-kerf" spellcheck="false">
+      </div>
+      <div class="field">
+        <label for="board-trim">End trim per board end</label>
+        <input id="board-trim" spellcheck="false">
+      </div>
+    </div>
+    <p class="summary-line" id="board-headline"></p>
+    <div class="viz-wrap" id="board-figures"></div>
+    <p class="empty-note" id="board-empty">Add “Frame stock” boards above and openings on the Calculator tab to see the layout.</p>
+    <ul class="warnings" id="board-warnings"></ul>
+  </div>
 </section>
 
 </main>
@@ -288,6 +314,7 @@
 <script src="js/fraction.js"></script>
 <script src="js/doormath.js"></script>
 <script src="js/sheetmath.js"></script>
+<script src="js/boardmath.js"></script>
 <script src="js/visualize.js"></script>
 <script src="js/app.js"></script>
 </body>

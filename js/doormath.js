@@ -40,18 +40,27 @@
       panelClearance: F.frac(1, 16), // panel expansion clearance per side
       frameThickness: F.frac(3, 4),
       panelThickness: F.frac(1, 4),
+      drawerStyle: 'fivepiece',    // 'fivepiece' | 'slab' drawer-front construction
       roundDenom: 32               // round cut-list dimensions to nearest 1/32
     };
   }
 
+  /** Normalize an opening's type: 'single' | 'pair' | 'drawer'. */
+  function openingType(opening) {
+    if (opening.type === 'pair' || opening.type === 'drawer' || opening.type === 'single') {
+      return opening.type;
+    }
+    return (opening.doorsAcross === 2) ? 'pair' : 'single';
+  }
+
   /**
-   * Size one door blank for an opening.
-   * opening: { width, height, doorsAcross } (fractions + integer)
-   * Returns { width, height, warnings: [] } for a single door of the set.
+   * Size one door (or drawer-front) blank for an opening.
+   * opening: { width, height, type|doorsAcross } (fractions + type)
+   * Returns { width, height, warnings: [] } for a single blank of the set.
    */
   function doorSize(settings, opening) {
     var warnings = [];
-    var n = opening.doorsAcross || 1;
+    var n = openingType(opening) === 'pair' ? 2 : 1;
     var w, h;
 
     if (settings.mode === 'overlay') {
@@ -73,11 +82,27 @@
   }
 
   /**
-   * Parts for ONE door of the given blank size.
-   * Returns array of { part, thickness, width, length, qtyPerDoor, material }.
+   * Parts for ONE door (or drawer front) of the given blank size.
+   * kind: 'single' | 'pair' | 'drawer'. A slab drawer front is one full-size
+   * piece; everything else is a five-piece frame + panel.
+   * Returns { warnings, parts: [{part, thickness, width, length, qtyPerDoor, material}] }.
    */
-  function doorParts(settings, size) {
+  function doorParts(settings, size, kind) {
     var warnings = [];
+
+    if (kind === 'drawer' && settings.drawerStyle === 'slab') {
+      return {
+        warnings: warnings,
+        parts: [{
+          part: 'Slab front',
+          thickness: settings.frameThickness,
+          width: size.width,
+          length: size.height,
+          qtyPerDoor: 1,
+          material: 'Slab stock'
+        }]
+      };
+    }
 
     var stileLength = size.height;
     var railLength = F.add(
@@ -137,14 +162,16 @@
 
   /**
    * Compute everything for one opening row.
-   * opening: { id, label, width, height, doorsAcross, qty }
+   * opening: { id, label, width, height, type, qty }
    */
   function computeOpening(settings, opening) {
+    var kind = openingType(opening);
     var size = doorSize(settings, opening);
-    var pp = doorParts(settings, size);
-    var doorCount = (opening.doorsAcross || 1) * (opening.qty || 1);
+    var pp = doorParts(settings, size, kind);
+    var doorCount = (kind === 'pair' ? 2 : 1) * (opening.qty || 1);
     return {
       opening: opening,
+      kind: kind,
       door: size,
       doorCount: doorCount,
       parts: pp.parts,
@@ -195,7 +222,7 @@
       });
     });
 
-    var order = { Stile: 0, Rail: 1, Panel: 2 };
+    var order = { Stile: 0, Rail: 1, Panel: 2, 'Slab front': 3 };
     var rows = Object.keys(groups).map(function (k) { return groups[k]; });
     rows.sort(function (a, b) {
       if (order[a.part] !== order[b.part]) return order[a.part] - order[b.part];
@@ -218,6 +245,7 @@
 
   var API = {
     defaultSettings: defaultSettings,
+    openingType: openingType,
     doorSize: doorSize,
     doorParts: doorParts,
     computeOpening: computeOpening,

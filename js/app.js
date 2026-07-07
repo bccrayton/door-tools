@@ -9,6 +9,7 @@
   var F = window.Fraction;
   var DM = window.DoorMath;
   var SM = window.SheetMath;
+  var BM = window.BoardMath;
   var VZ = window.Visualize;
 
   var STORAGE_PROJECT = 'doorTools.project.v1';
@@ -29,11 +30,17 @@
         panelClearance: '1/16',
         frameThickness: '3/4',
         panelThickness: '1/4',
+        drawerStyle: 'fivepiece',
         roundDenom: 32
       },
       openings: [],
-      sheets: defaultSheetConfig()
+      sheets: defaultSheetConfig(),
+      boards: defaultBoardConfig()
     };
+  }
+
+  function defaultBoardConfig() {
+    return { kerf: '1/8', endTrim: '0' };
   }
 
   function defaultSheetConfig() {
@@ -52,8 +59,13 @@
   }
 
   var project = loadJSON(STORAGE_PROJECT) || defaultProject();
-  // projects saved before the Sheets tab existed lack .sheets
+  // projects saved by earlier versions lack newer config blocks/fields
   project.sheets = Object.assign(defaultSheetConfig(), project.sheets || {});
+  project.boards = Object.assign(defaultBoardConfig(), project.boards || {});
+  if (!project.settings.drawerStyle) project.settings.drawerStyle = 'fivepiece';
+  project.openings.forEach(function (op) {
+    if (!op.type) op.type = op.doorsAcross === 2 ? 'pair' : 'single';
+  });
   var inventory = loadJSON(STORAGE_INVENTORY) || [];
   var nextId = 1;
 
@@ -86,6 +98,7 @@
     var s = DM.defaultSettings();
     s.mode = project.mode;
     s.roundDenom = project.settings.roundDenom || 32;
+    s.drawerStyle = project.settings.drawerStyle === 'slab' ? 'slab' : 'fivepiece';
     var errors = {};
     ['gapPerSide', 'overlay', 'pairGap', 'stileWidth', 'railWidth',
       'tongueLength', 'panelClearance', 'frameThickness', 'panelThickness'
@@ -108,13 +121,15 @@
       var qty = parseInt(op.qty, 10);
       var valid = w && h && !F.isNegative(w) && !F.isZero(w) &&
         !F.isNegative(h) && !F.isZero(h) && qty >= 1;
+      var type = DM.openingType(op);
       return {
         raw: op,
         valid: !!valid,
         label: op.label || 'Opening',
         width: w,
         height: h,
-        doorsAcross: op.doorsAcross === 2 ? 2 : 1,
+        type: type,
+        doorsAcross: type === 'pair' ? 2 : 1,
         qty: qty >= 1 ? qty : 1
       };
     });
@@ -160,6 +175,8 @@
       input.value = project.settings[input.dataset.setting];
     });
     document.getElementById('set-roundDenom').value = String(project.settings.roundDenom || 32);
+    document.getElementById('set-drawerStyle').value =
+      project.settings.drawerStyle === 'slab' ? 'slab' : 'fivepiece';
   }
 
   document.querySelectorAll('[data-setting]').forEach(function (input) {
@@ -188,6 +205,12 @@
     renderAll();
   });
 
+  document.getElementById('set-drawerStyle').addEventListener('change', function () {
+    project.settings.drawerStyle = this.value;
+    saveProject();
+    renderAll();
+  });
+
   // -------------------------------------------------------------- openings
 
   var openingsBody = document.querySelector('#openings-table tbody');
@@ -198,7 +221,7 @@
       label: 'B' + (project.openings.length + 1),
       width: '',
       height: '',
-      doorsAcross: 1,
+      type: 'single',
       qty: 1
     });
     saveProject();
@@ -236,11 +259,12 @@
       var sel = document.createElement('select');
       sel.className = 'doors';
       sel.dataset.id = op.id;
-      [[1, 'Single'], [2, 'Pair']].forEach(function (opt) {
+      var opType = DM.openingType(op);
+      [['single', 'Door'], ['pair', 'Door pair'], ['drawer', 'Drawer']].forEach(function (opt) {
         var o = document.createElement('option');
-        o.value = String(opt[0]);
+        o.value = opt[0];
         o.textContent = opt[1];
-        if (op.doorsAcross === opt[0]) o.selected = true;
+        if (opType === opt[0]) o.selected = true;
         sel.appendChild(o);
       });
       tdDoors.appendChild(sel);
@@ -308,7 +332,8 @@
     if (el.tagName === 'SELECT') {
       var op = project.openings.find(function (o) { return o.id === el.dataset.id; });
       if (op) {
-        op.doorsAcross = parseInt(el.value, 10);
+        op.type = el.value;
+        delete op.doorsAcross; // legacy field superseded by type
         saveProject();
         renderAll();
       }
@@ -340,6 +365,7 @@
     renderWarnings(data);
     renderCabinet(data);
     renderSheets(data);
+    renderBoards(data);
   }
 
   // --------------------------------------------------------------- compute
@@ -358,7 +384,7 @@
       var doorText = res.warnings.length
         ? 'check size'
         : F.format(res.door.width, 64) + '" × ' + F.format(res.door.height, 64) + '"' +
-          (o.doorsAcross === 2 ? ' (each of pair)' : '');
+          (o.type === 'pair' ? ' (each of pair)' : (o.type === 'drawer' ? ' (drawer front)' : ''));
       return { doorText: doorText, hasWarnings: res.warnings.length > 0, result: res };
     });
 
@@ -388,8 +414,10 @@
       any = true;
       comp.result.parts.forEach(function (p, j) {
         var tr = document.createElement('tr');
+        var unitName = comp.result.kind === 'drawer' ? 'front' : 'door';
         var cells = [
-          j === 0 ? (o.label + ' — ' + comp.result.doorCount + ' door' + (comp.result.doorCount > 1 ? 's' : '')) : '',
+          j === 0 ? (o.label + ' — ' + comp.result.doorCount + ' ' + unitName +
+            (comp.result.doorCount > 1 ? 's' : '')) : '',
           p.part,
           String(p.qtyPerDoor),
           F.format(p.thickness) + '"',
@@ -558,10 +586,11 @@
       fig.className = 'viz';
       fig.innerHTML = VZ.cabinetSVG(d.comp, data.settings, pxPerIn);
       var cap = document.createElement('figcaption');
-      var pair = d.o.doorsAcross === 2;
+      var what = d.o.type === 'pair' ? 'pair of doors, each '
+        : (d.o.type === 'drawer' ? 'drawer front ' : 'door ');
       cap.textContent = d.o.label +
         (d.o.qty > 1 ? ' (×' + d.o.qty + ')' : '') +
-        ' — ' + (pair ? 'pair of doors, each ' : 'door ') +
+        ' — ' + what +
         F.format(d.comp.door.width) + '" × ' + F.format(d.comp.door.height) + '"';
       fig.appendChild(cap);
       wrap.appendChild(fig);
@@ -676,10 +705,11 @@
       });
       return { parts: parts, errors: errors };
     }
-    // panels from the aggregated cut list
+    // panels or slab fronts from the aggregated cut list
+    var wanted = cfg.source === 'slabs' ? 'Slab front' : 'Panel';
     return {
       parts: data.cutList.rows
-        .filter(function (r) { return r.part === 'Panel'; })
+        .filter(function (r) { return r.part === wanted; })
         .map(function (r) {
           return { width: r.width, height: r.length, qty: r.qty, label: r.labels.join(', ') };
         }),
@@ -737,7 +767,7 @@
     var opts = { kerf: kerf, trim: trim, allowRotate: cfg.allowRotate };
     var res = SM.packParts(dims, sp.parts, opts);
 
-    var sourceName = cfg.source === 'doors' ? 'door' : (cfg.source === 'custom' ? 'part' : 'panel');
+    var sourceName = { doors: 'door/front', custom: 'part', slabs: 'slab front' }[cfg.source] || 'panel';
     document.getElementById('sheet-subtitle').textContent =
       '— ' + res.placedUnits + ' ' + sourceName + (res.placedUnits === 1 ? '' : 's') +
       ' on ' + dims.label;
@@ -828,6 +858,107 @@
     });
   }
 
+  // ---------------------------------------------------------- board optimizer
+
+  var BOARD_INPUTS = {
+    kerf: document.getElementById('board-kerf'),
+    trim: document.getElementById('board-trim')
+  };
+
+  function renderBoardInputs() {
+    BOARD_INPUTS.kerf.value = project.boards.kerf;
+    BOARD_INPUTS.trim.value = project.boards.endTrim;
+  }
+
+  [['kerf', 'kerf'], ['trim', 'endTrim']].forEach(function (pair) {
+    BOARD_INPUTS[pair[0]].addEventListener('input', function () {
+      project.boards[pair[1]] = this.value;
+      saveProject();
+      renderBoards(compute());
+    });
+  });
+
+  /** Frame-stock boards from inventory with usable dimensions. */
+  function stockBoards() {
+    return inventory
+      .filter(function (item) { return item.material === 'Frame stock'; })
+      .map(function (item) {
+        var w = F.parse(item.width);
+        var l = F.parse(item.length);
+        var qty = parseInt(item.qty, 10) || 0;
+        if (!w || !l || F.isNegative(w) || F.isZero(w) ||
+          F.isNegative(l) || F.isZero(l) || qty < 1) return null;
+        return {
+          width: w, length: l, qty: qty,
+          label: (item.species || 'Board') + ' ' + F.format(w) + '×' + F.format(l)
+        };
+      })
+      .filter(Boolean);
+  }
+
+  function renderBoards(data) {
+    var headline = document.getElementById('board-headline');
+    var figures = document.getElementById('board-figures');
+    var warnUl = document.getElementById('board-warnings');
+    var emptyNote = document.getElementById('board-empty');
+    figures.innerHTML = '';
+    warnUl.innerHTML = '';
+    headline.textContent = '';
+
+    var kerf = F.parse(project.boards.kerf);
+    var trim = F.parse(project.boards.endTrim);
+    BOARD_INPUTS.kerf.classList.toggle('invalid', !kerf || F.isNegative(kerf));
+    BOARD_INPUTS.trim.classList.toggle('invalid', !trim || F.isNegative(trim));
+
+    var parts = data.cutList.rows
+      .filter(function (r) { return r.material === 'Frame stock'; })
+      .map(function (r) {
+        return { width: r.width, length: r.length, qty: r.qty, label: r.part };
+      });
+    var boards = stockBoards();
+    var totalParts = parts.reduce(function (n, p) { return n + p.qty; }, 0);
+
+    var ready = totalParts > 0 && boards.length > 0 &&
+      kerf && !F.isNegative(kerf) && trim && !F.isNegative(trim);
+    emptyNote.style.display = ready ? 'none' : '';
+    if (!ready) return;
+
+    var res = BM.packBoards(boards, parts, { kerf: kerf, endTrim: trim });
+
+    if (res.placedUnits === res.totalUnits) {
+      headline.textContent = 'All ' + res.totalUnits + ' frame parts fit your stock — ' +
+        res.boards.length + ' of ' + res.boardsAvailable + ' board' +
+        (res.boardsAvailable === 1 ? '' : 's') + ' used.';
+    } else {
+      headline.textContent = res.placedUnits + ' of ' + res.totalUnits +
+        ' frame parts fit the stock on hand.';
+      res.shortfalls.forEach(function (s) {
+        var li = document.createElement('li');
+        var feet = (s.linear / 64) / 12;
+        li.textContent = 'Short ' + s.count + ' part' + (s.count === 1 ? '' : 's') + ' at ' +
+          F.format(F.frac(s.wclass, 64)) + '" wide — need roughly ' +
+          feet.toFixed(1) + ' more linear ft (plus waste).';
+        warnUl.appendChild(li);
+      });
+    }
+
+    var maxLenIn = res.boards.reduce(function (m, b) { return Math.max(m, b.length / 64); }, 1);
+    var scale = Math.min(8, 640 / maxLenIn);
+    res.boards.forEach(function (b, i) {
+      var fig = document.createElement('figure');
+      fig.className = 'viz board';
+      fig.innerHTML = VZ.boardSVG(b, scale);
+      var cap = document.createElement('figcaption');
+      var segs = b.strips.reduce(function (n, s) { return n + s.segments.length; }, 0);
+      cap.textContent = 'Board ' + (i + 1) + ' — ' + b.label + '" — ' +
+        b.strips.length + ' rip' + (b.strips.length === 1 ? '' : 's') + ', ' +
+        segs + ' part' + (segs === 1 ? '' : 's') + ', ' +
+        Math.round(b.utilization * 100) + '% of the board used';
+      fig.appendChild(cap);
+      figures.appendChild(fig);
+    });
+  }
+
   // ---------------------------------------------------------- import/export
 
   document.getElementById('export-project').addEventListener('click', function () {
@@ -856,11 +987,17 @@
         project = Object.assign(defaultProject(), data);
         project.settings = Object.assign(defaultProject().settings, data.settings || {});
         project.sheets = Object.assign(defaultSheetConfig(), data.sheets || {});
-        project.openings.forEach(function (op) { if (!op.id) op.id = uid(); });
+        project.boards = Object.assign(defaultBoardConfig(), data.boards || {});
+        if (!project.settings.drawerStyle) project.settings.drawerStyle = 'fivepiece';
+        project.openings.forEach(function (op) {
+          if (!op.id) op.id = uid();
+          if (!op.type) op.type = op.doorsAcross === 2 ? 'pair' : 'single';
+        });
         saveProject();
         renderMode();
         renderSettingsInputs();
         renderSheetInputs();
+        renderBoardInputs();
         renderAll();
       } catch (e) {
         alert('That file does not look like a door-project JSON export.');
@@ -963,6 +1100,8 @@
     document.getElementById('inventory-summary').textContent = inventory.length
       ? boards + ' pieces on hand · ' + (frameInches / 12).toFixed(1) + ' linear ft of frame stock'
       : '';
+
+    renderBoards(compute());
   }
 
   inventoryBody.addEventListener('input', function (e) {
@@ -984,6 +1123,7 @@
     });
     document.getElementById('inventory-summary').textContent =
       boards + ' pieces on hand · ' + (frameInches / 12).toFixed(1) + ' linear ft of frame stock';
+    renderBoards(compute());
   });
 
   inventoryBody.addEventListener('change', function (e) {
@@ -1007,11 +1147,13 @@
     renderWarnings(data);
     renderCabinet(data);
     renderSheets(data);
+    renderBoards(data);
   }
 
   renderMode();
   renderSettingsInputs();
   renderSheetInputs();
+  renderBoardInputs();
   renderAll();
   renderInventory();
 })();
