@@ -10,6 +10,7 @@
   var DM = window.DoorMath;
   var SM = window.SheetMath;
   var BM = window.BoardMath;
+  var HM = window.HingeMath;
   var VZ = window.Visualize;
 
   var STORAGE_PROJECT = 'doorTools.project.v1';
@@ -35,12 +36,17 @@
       },
       openings: [],
       sheets: defaultSheetConfig(),
-      boards: defaultBoardConfig()
+      boards: defaultBoardConfig(),
+      hinges: defaultHingeConfig()
     };
   }
 
   function defaultBoardConfig() {
     return { kerf: '1/8', endTrim: '0' };
+  }
+
+  function defaultHingeConfig() {
+    return { cupDia: '35mm', edgeGap: '5mm', endOffset: '3', count: 'auto' };
   }
 
   function defaultSheetConfig() {
@@ -62,6 +68,7 @@
   // projects saved by earlier versions lack newer config blocks/fields
   project.sheets = Object.assign(defaultSheetConfig(), project.sheets || {});
   project.boards = Object.assign(defaultBoardConfig(), project.boards || {});
+  project.hinges = Object.assign(defaultHingeConfig(), project.hinges || {});
   if (!project.settings.drawerStyle) project.settings.drawerStyle = 'fivepiece';
   project.openings.forEach(function (op) {
     if (!op.type) op.type = op.doorsAcross === 2 ? 'pair' : 'single';
@@ -366,6 +373,7 @@
     renderCabinet(data);
     renderSheets(data);
     renderBoards(data);
+    renderHinges(data);
   }
 
   // --------------------------------------------------------------- compute
@@ -959,6 +967,151 @@
     });
   }
 
+  // --------------------------------------------------------------- hinges
+
+  var HINGE_INPUTS = {
+    cupDia: document.getElementById('hinge-cupDia'),
+    edgeGap: document.getElementById('hinge-edgeGap'),
+    endOffset: document.getElementById('hinge-endOffset'),
+    count: document.getElementById('hinge-count')
+  };
+
+  function renderHingeInputs() {
+    HINGE_INPUTS.cupDia.value = project.hinges.cupDia;
+    HINGE_INPUTS.edgeGap.value = project.hinges.edgeGap;
+    HINGE_INPUTS.endOffset.value = project.hinges.endOffset;
+    HINGE_INPUTS.count.value = project.hinges.count;
+  }
+
+  ['cupDia', 'edgeGap', 'endOffset'].forEach(function (name) {
+    HINGE_INPUTS[name].addEventListener('input', function () {
+      project.hinges[name] = this.value;
+      saveProject();
+      renderHinges(compute());
+    });
+  });
+
+  HINGE_INPUTS.count.addEventListener('change', function () {
+    project.hinges.count = this.value;
+    saveProject();
+    renderHinges(compute());
+  });
+
+  /** "3 (76.2mm)" — inch fraction with mm alongside. */
+  function inAndMM(f) {
+    return F.format(f) + '" (' + F.toMM(f).toFixed(1) + 'mm)';
+  }
+
+  function renderHinges(data) {
+    var headline = document.getElementById('hinge-headline');
+    var figures = document.getElementById('hinge-figures');
+    var warnUl = document.getElementById('hinge-warnings');
+    var tbody = document.querySelector('#hinge-table tbody');
+    figures.innerHTML = '';
+    warnUl.innerHTML = '';
+    tbody.innerHTML = '';
+    headline.textContent = '';
+    document.getElementById('hinge-subtitle').textContent = '';
+
+    var cfg = project.hinges;
+    var cupDia = F.parse(cfg.cupDia);
+    var edgeGap = F.parse(cfg.edgeGap);
+    var endOffset = F.parse(cfg.endOffset);
+    HINGE_INPUTS.cupDia.classList.toggle('invalid', !cupDia || F.isNegative(cupDia) || F.isZero(cupDia));
+    HINGE_INPUTS.edgeGap.classList.toggle('invalid', !edgeGap || F.isNegative(edgeGap));
+    HINGE_INPUTS.endOffset.classList.toggle('invalid', !endOffset || F.isNegative(endOffset) || F.isZero(endOffset));
+
+    var settingsOk = cupDia && !F.isNegative(cupDia) && !F.isZero(cupDia) &&
+      edgeGap && !F.isNegative(edgeGap) &&
+      endOffset && !F.isNegative(endOffset) && !F.isZero(endOffset);
+
+    // hinged doors only: singles and pairs, never drawer fronts
+    var doors = [];
+    data.perOpening.forEach(function (comp, i) {
+      var o = data.openings[i];
+      if (comp.result && !comp.hasWarnings && o.type !== 'drawer') {
+        doors.push({ comp: comp.result, o: o });
+      }
+    });
+
+    var any = settingsOk && doors.length > 0;
+    document.getElementById('hinge-empty').style.display = any ? 'none' : '';
+    document.getElementById('hinge-table-empty').style.display = any ? 'none' : '';
+    if (!settingsOk) {
+      var li0 = document.createElement('li');
+      li0.textContent = 'Fix the highlighted hinge settings first.';
+      warnUl.appendChild(li0);
+      return;
+    }
+    if (!doors.length) return;
+
+    var opts = {
+      cupDia: cupDia,
+      edgeGap: edgeGap,
+      endOffset: endOffset,
+      count: cfg.count === 'auto' ? 'auto' : parseInt(cfg.count, 10)
+    };
+
+    // shared scale across doors
+    var maxH = doors.reduce(function (m, d) {
+      return Math.max(m, F.toNumber(d.comp.door.height));
+    }, 1);
+    var scale = Math.min(10, 250 / maxH);
+
+    var totalHinges = 0;
+    var cupFromEdge = null;
+
+    doors.forEach(function (d) {
+      var res = HM.computeHinges(opts, d.comp.door.height);
+      cupFromEdge = res.cupCenterFromEdge;
+      totalHinges += res.count * d.comp.doorCount;
+
+      res.warnings.forEach(function (msg) {
+        var li = document.createElement('li');
+        li.textContent = d.o.label + ': ' + msg;
+        warnUl.appendChild(li);
+      });
+
+      var fig = document.createElement('figure');
+      fig.className = 'viz';
+      fig.innerHTML = VZ.hingeSVG({
+        doorWIn: F.toNumber(d.comp.door.width),
+        doorHIn: F.toNumber(d.comp.door.height),
+        cupFromEdgeIn: F.toNumber(res.cupCenterFromEdge),
+        cupDiaIn: F.toNumber(cupDia),
+        centers: res.centers.map(function (c) {
+          return { yIn: F.toNumber(c), label: F.format(c) + '"' };
+        })
+      }, scale);
+      var cap = document.createElement('figcaption');
+      cap.textContent = d.o.label + ' — ' + d.comp.doorCount + ' door' +
+        (d.comp.doorCount > 1 ? 's' : '') + ' × ' + res.count + ' hinges';
+      fig.appendChild(cap);
+      figures.appendChild(fig);
+
+      var tr = document.createElement('tr');
+      [
+        d.o.label,
+        String(d.comp.doorCount),
+        String(res.count),
+        res.centers.map(inAndMM).join(', '),
+        inAndMM(res.cupCenterFromEdge)
+      ].forEach(function (text, i) {
+        var td = document.createElement('td');
+        td.textContent = text;
+        if (i === 1 || i === 2 || i === 4) td.className = 'num';
+        tr.appendChild(td);
+      });
+      tbody.appendChild(tr);
+    });
+
+    document.getElementById('hinge-subtitle').textContent =
+      '— ' + doors.length + ' opening' + (doors.length > 1 ? 's' : '');
+    headline.textContent = totalHinges + ' hinge' + (totalHinges === 1 ? '' : 's') +
+      ' to buy · ' + F.toMM(cupDia).toFixed(0) + 'mm cup, bore center ' +
+      inAndMM(cupFromEdge) + ' from the hinged edge.';
+  }
+
   // ---------------------------------------------------------- import/export
 
   document.getElementById('export-project').addEventListener('click', function () {
@@ -988,6 +1141,7 @@
         project.settings = Object.assign(defaultProject().settings, data.settings || {});
         project.sheets = Object.assign(defaultSheetConfig(), data.sheets || {});
         project.boards = Object.assign(defaultBoardConfig(), data.boards || {});
+        project.hinges = Object.assign(defaultHingeConfig(), data.hinges || {});
         if (!project.settings.drawerStyle) project.settings.drawerStyle = 'fivepiece';
         project.openings.forEach(function (op) {
           if (!op.id) op.id = uid();
@@ -998,6 +1152,7 @@
         renderSettingsInputs();
         renderSheetInputs();
         renderBoardInputs();
+        renderHingeInputs();
         renderAll();
       } catch (e) {
         alert('That file does not look like a door-project JSON export.');
@@ -1148,12 +1303,14 @@
     renderCabinet(data);
     renderSheets(data);
     renderBoards(data);
+    renderHinges(data);
   }
 
   renderMode();
   renderSettingsInputs();
   renderSheetInputs();
   renderBoardInputs();
+  renderHingeInputs();
   renderAll();
   renderInventory();
 })();

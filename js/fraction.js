@@ -51,9 +51,11 @@
   }
 
   /**
-   * Parse a measurement string into a fraction.
+   * Parse a measurement string into a fraction of an INCH.
    * Accepts: `24`, `24 3/8`, `24-3/8`, `3/8`, `24.375`, with optional
-   * trailing `"` or `in`. Returns null on bad input.
+   * trailing `"` or `in` — or millimeters with a trailing `mm`
+   * (`35mm`, `22.5 mm`), converted exactly (1 in = 127/5 mm).
+   * Returns null on bad input.
    */
   function parse(str) {
     if (typeof str === 'number') {
@@ -64,6 +66,12 @@
       .replace(/(inches|inch|in|["”″])\s*$/, '')
       .trim();
     if (s === '') return null;
+
+    var mmMatch = s.match(/^(.+?)\s*mm$/);
+    if (mmMatch) {
+      var inner = parse(mmMatch[1]);
+      return inner ? mul(inner, frac(5, 127)) : null;
+    }
 
     var neg = false;
     if (s[0] === '-') {
@@ -140,8 +148,12 @@
     return approx + sign + out;
   }
 
+  /** Value in millimeters (number), for display alongside inches. */
+  function toMM(a) { return (a.n / a.d) * 25.4; }
+
   var API = {
     frac: frac,
+    toMM: toMM,
     add: add,
     sub: sub,
     mul: mul,

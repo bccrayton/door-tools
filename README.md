@@ -64,7 +64,16 @@ size is known.
    rotation. A quick reference table shows fits-per-sheet, sheets needed,
    and utilization across all the standard sizes at once. Packing is
    first-fit-decreasing shelf nesting in exact 1/64" integer math.
-5. **Inventory tab** — track frame and panel stock on hand (species,
+5. **Hinges tab** — cup-hinge (Euro) boring locations for every door
+   (drawer fronts are skipped). Set the cup diameter (default `35mm`),
+   edge gap/tab (default `5mm`), and end offset (default 3"); hinge count
+   follows the standard height rule — ≤40" → 2, ≤60" → 3, ≤80" → 4,
+   taller → 5 — or force a count. You get a boring diagram per door
+   (hinged edge marked, cup centers with crosshairs and callouts) and a
+   drill list with every position in inches *and* millimeters. Metric
+   entries like `35mm` or `22.5 mm` parse exactly everywhere in the app
+   (1 in = 127/5 mm, kept as an exact fraction).
+6. **Inventory tab** — track frame and panel stock on hand (species,
    dimensions, quantity, notes) with a running linear-footage total, plus
    the **board optimizer**: it rips your "Frame stock" boards into strips
    of each part's width (one rip kerf per strip), crosscuts the project's
@@ -79,12 +88,12 @@ warning rather than producing nonsense numbers.
 
 ## Development
 
-Plain HTML/CSS/JS. `js/fraction.js` (exact rational arithmetic and fraction
-parsing/formatting), `js/doormath.js` (door/drawer sizing and cut-list
-aggregation), `js/sheetmath.js` (sheet nesting), and `js/boardmath.js`
-(rip-and-crosscut board packing) are dependency-free modules that also load
-in Node; `js/visualize.js` builds the SVG drawings and `js/app.js` wires up
-the UI.
+Plain HTML/CSS/JS. `js/fraction.js` (exact rational arithmetic, fraction and
+metric parsing/formatting), `js/doormath.js` (door/drawer sizing and cut-list
+aggregation), `js/sheetmath.js` (sheet nesting), `js/boardmath.js`
+(rip-and-crosscut board packing), and `js/hingemath.js` (cup-hinge boring
+layout) are dependency-free modules that also load in Node; `js/visualize.js`
+builds the SVG drawings and `js/app.js` wires up the UI.
 
 Run the tests:
 
@@ -96,4 +105,3 @@ npm test        # or: node --test tests/
 
 - Panel-raising and applied-molding profiles
 - Face frames
-- Hinge boring locations

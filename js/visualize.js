@@ -252,6 +252,57 @@
     return out.join('');
   }
 
+  // --------------------------------------------------------------- hinges
+
+  /**
+   * Boring diagram for one door: hinged edge on the left, cup bores as
+   * circles with crosshairs, each labeled with its distance from the top.
+   * spec: {
+   *   doorWIn, doorHIn,          // door blank size (inches, numbers)
+   *   cupFromEdgeIn, cupDiaIn,   // inches, numbers
+   *   centers: [{ yIn, label }]  // cup centers from the top + printed label
+   * }
+   * scale: px per inch (shared across doors for honest comparison)
+   */
+  function hingeSVG(spec, scale) {
+    var padL = 10, padT = 16, padB = 16, labelW = 110;
+    var dw = spec.doorWIn * scale;
+    var dh = spec.doorHIn * scale;
+    var W = padL + dw + labelW;
+    var H = padT + dh + padB;
+    var out = [];
+    out.push('<svg xmlns="http://www.w3.org/2000/svg" width="' + Math.ceil(W) +
+      '" height="' + Math.ceil(H) + '" viewBox="0 0 ' + Math.ceil(W) + ' ' + Math.ceil(H) +
+      '" role="img" font-family="inherit">');
+
+    out.push(rect(padL, padT, dw, dh, COLORS.doorWood, COLORS.doorEdge, 1.5, 1.5));
+    // hinged edge emphasized
+    out.push('<line x1="' + padL + '" y1="' + padT + '" x2="' + padL + '" y2="' + (padT + dh) +
+      '" stroke="' + COLORS.doorEdge + '" stroke-width="4"/>');
+    out.push('<text x="' + (padL + 5) + '" y="' + (padT - 5) +
+      '" font-size="9" fill="' + COLORS.dim + '">hinged edge ↓</text>');
+
+    var cx = padL + spec.cupFromEdgeIn * scale;
+    var r = Math.max(3, (spec.cupDiaIn / 2) * scale);
+    spec.centers.forEach(function (c) {
+      var cy = padT + c.yIn * scale;
+      out.push('<circle cx="' + cx + '" cy="' + cy + '" r="' + r +
+        '" fill="#ffffff88" stroke="' + COLORS.doorEdge + '" stroke-width="1.5"/>');
+      out.push('<line x1="' + (cx - r - 3) + '" y1="' + cy + '" x2="' + (cx + r + 3) + '" y2="' + cy +
+        '" stroke="' + COLORS.doorEdge + '" stroke-width="0.75"/>');
+      out.push('<line x1="' + cx + '" y1="' + (cy - r - 3) + '" x2="' + cx + '" y2="' + (cy + r + 3) +
+        '" stroke="' + COLORS.doorEdge + '" stroke-width="0.75"/>');
+      // leader + label to the right of the door
+      out.push('<line x1="' + (cx + r + 3) + '" y1="' + cy + '" x2="' + (padL + dw + 6) + '" y2="' + cy +
+        '" stroke="' + COLORS.dim + '" stroke-width="0.75" stroke-dasharray="3 3"/>');
+      out.push('<text x="' + (padL + dw + 9) + '" y="' + (cy + 3) +
+        '" font-size="9" fill="' + COLORS.dim + '">' + esc(c.label) + '</text>');
+    });
+
+    out.push('</svg>');
+    return out.join('');
+  }
+
   // --------------------------------------------------------------- helpers
 
   function rect(x, y, w, h, fill, stroke, sw, rx) {
@@ -288,7 +339,12 @@
     return s.length > max ? s.slice(0, Math.max(1, max - 1)) + '…' : s;
   }
 
-  var API = { cabinetSVG: cabinetSVG, sheetSVG: sheetSVG, boardSVG: boardSVG };
+  var API = {
+    cabinetSVG: cabinetSVG,
+    sheetSVG: sheetSVG,
+    boardSVG: boardSVG,
+    hingeSVG: hingeSVG
+  };
 
   if (typeof module !== 'undefined' && module.exports) {
     module.exports = API;
