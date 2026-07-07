@@ -13,7 +13,9 @@
   <p class="tagline">Calculator · cut list · inventory — inset &amp; overlay frame-and-panel doors</p>
   <nav class="tabs" role="tablist">
     <button role="tab" aria-selected="true" data-tab="calculator">Calculator</button>
+    <button role="tab" aria-selected="false" data-tab="cabinet">Cabinet</button>
     <button role="tab" aria-selected="false" data-tab="cutlist">Cut List</button>
+    <button role="tab" aria-selected="false" data-tab="sheets">Sheets</button>
     <button role="tab" aria-selected="false" data-tab="inventory">Inventory</button>
   </nav>
 </header>
@@ -128,6 +130,16 @@
 
 </section>
 
+<!-- ============ CABINET VIEW ============ -->
+<section class="tab-panel" id="tab-cabinet" role="tabpanel" hidden>
+  <div class="card">
+    <h2>Cabinet elevation <span class="hint">— every opening drawn to the same scale, doors shown with their real gaps or overlays</span></h2>
+    <div class="viz-wrap" id="cabinet-figures"></div>
+    <p class="empty-note" id="cabinet-empty">Add openings on the Calculator tab to see them drawn here.</p>
+    <p class="approx-note" id="cabinet-note" hidden>Dashed line = cabinet opening hidden behind an overlay door.</p>
+  </div>
+</section>
+
 <!-- ============ CUT LIST ============ -->
 <section class="tab-panel" id="tab-cutlist" role="tabpanel" hidden>
   <div class="card">
@@ -158,6 +170,88 @@
     </div>
     <ul class="warnings" id="cutlist-warnings"></ul>
   </div>
+</section>
+
+<!-- ============ SHEETS ============ -->
+<section class="tab-panel" id="tab-sheets" role="tabpanel" hidden>
+
+  <div class="card no-print">
+    <h2>Sheet &amp; parts</h2>
+    <div class="settings-grid">
+      <div class="field">
+        <label for="sheet-source">What to nest</label>
+        <select id="sheet-source">
+          <option value="panels">Panels from cut list</option>
+          <option value="doors">Whole doors (slab / MDF)</option>
+          <option value="custom">Custom part size</option>
+        </select>
+      </div>
+      <div class="field sheet-custom-part" hidden>
+        <label for="sheet-partW">Part width</label>
+        <input id="sheet-partW" spellcheck="false" placeholder="e.g. 11">
+      </div>
+      <div class="field sheet-custom-part" hidden>
+        <label for="sheet-partH">Part height</label>
+        <input id="sheet-partH" spellcheck="false" placeholder="e.g. 16">
+      </div>
+      <div class="field sheet-custom-part" hidden>
+        <label for="sheet-partQty">Part qty</label>
+        <input id="sheet-partQty" type="number" min="1" step="1" value="10">
+      </div>
+      <div class="field">
+        <label for="sheet-size">Sheet size</label>
+        <select id="sheet-size"></select>
+      </div>
+      <div class="field sheet-custom-size" hidden>
+        <label for="sheet-w">Sheet width</label>
+        <input id="sheet-w" spellcheck="false" placeholder="48">
+      </div>
+      <div class="field sheet-custom-size" hidden>
+        <label for="sheet-l">Sheet length</label>
+        <input id="sheet-l" spellcheck="false" placeholder="96">
+      </div>
+      <div class="field">
+        <label for="sheet-kerf">Saw kerf</label>
+        <input id="sheet-kerf" spellcheck="false">
+      </div>
+      <div class="field">
+        <label for="sheet-trim">Edge trim per side</label>
+        <input id="sheet-trim" spellcheck="false">
+      </div>
+      <div class="field checkbox">
+        <label for="sheet-rotate">Grain</label>
+        <label class="check-line"><input type="checkbox" id="sheet-rotate"> allow 90° rotation</label>
+      </div>
+    </div>
+    <p class="approx-note">Parts are placed grain-vertical (part height along the sheet length). Allow rotation only if grain direction doesn't matter.</p>
+  </div>
+
+  <div class="card">
+    <h2>Yield <span class="hint" id="sheet-subtitle"></span></h2>
+    <p class="summary-line" id="sheet-headline"></p>
+    <div class="viz-wrap" id="sheet-figures"></div>
+    <p class="empty-note" id="sheet-empty">Add openings on the Calculator tab (or pick “Custom part size”) to see the layout.</p>
+    <ul class="warnings" id="sheet-warnings"></ul>
+  </div>
+
+  <div class="card">
+    <h2>Standard sheet quick reference <span class="hint">— same parts, kerf, and trim on each stock size</span></h2>
+    <div class="table-scroll">
+      <table id="sheet-quickref">
+        <thead>
+          <tr>
+            <th>Sheet</th>
+            <th class="num">Fits per sheet</th>
+            <th class="num">Sheets needed</th>
+            <th class="num">Avg utilization</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <p class="approx-note">“Fits per sheet” is shown when all nested parts share one size.</p>
+  </div>
+
 </section>
 
 <!-- ============ INVENTORY ============ -->
@@ -193,6 +287,8 @@
 
 <script src="js/fraction.js"></script>
 <script src="js/doormath.js"></script>
+<script src="js/sheetmath.js"></script>
+<script src="js/visualize.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>

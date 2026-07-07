@@ -8,6 +8,8 @@
 
   var F = window.Fraction;
   var DM = window.DoorMath;
+  var SM = window.SheetMath;
+  var VZ = window.Visualize;
 
   var STORAGE_PROJECT = 'doorTools.project.v1';
   var STORAGE_INVENTORY = 'doorTools.inventory.v1';
@@ -29,11 +31,29 @@
         panelThickness: '1/4',
         roundDenom: 32
       },
-      openings: []
+      openings: [],
+      sheets: defaultSheetConfig()
+    };
+  }
+
+  function defaultSheetConfig() {
+    return {
+      source: 'panels',      // 'panels' | 'doors' | 'custom'
+      partW: '11',
+      partH: '16',
+      partQty: 10,
+      sheetKey: '4x8',
+      sheetW: '48',
+      sheetL: '96',
+      kerf: '1/8',
+      trim: '0',
+      allowRotate: false
     };
   }
 
   var project = loadJSON(STORAGE_PROJECT) || defaultProject();
+  // projects saved before the Sheets tab existed lack .sheets
+  project.sheets = Object.assign(defaultSheetConfig(), project.sheets || {});
   var inventory = loadJSON(STORAGE_INVENTORY) || [];
   var nextId = 1;
 
@@ -318,6 +338,8 @@
     renderBreakdown(data);
     renderCutList(data);
     renderWarnings(data);
+    renderCabinet(data);
+    renderSheets(data);
   }
 
   // --------------------------------------------------------------- compute
@@ -507,6 +529,305 @@
     });
   }
 
+  // ---------------------------------------------------------- cabinet view
+
+  function renderCabinet(data) {
+    var wrap = document.getElementById('cabinet-figures');
+    wrap.innerHTML = '';
+    var drawable = [];
+    data.perOpening.forEach(function (comp, i) {
+      if (comp.result && !comp.hasWarnings) drawable.push({ comp: comp.result, o: data.openings[i] });
+    });
+
+    document.getElementById('cabinet-empty').style.display = drawable.length ? 'none' : '';
+    document.getElementById('cabinet-note').hidden =
+      !(drawable.length && data.settings.mode === 'overlay');
+    if (!drawable.length) return;
+
+    // shared scale: tallest opening (plus frame border) fits ~280px
+    var maxIn = 1;
+    drawable.forEach(function (d) {
+      maxIn = Math.max(maxIn,
+        F.toNumber(d.o.height) + 4,
+        F.toNumber(d.o.width) + 4);
+    });
+    var pxPerIn = Math.min(9, 280 / maxIn);
+
+    drawable.forEach(function (d) {
+      var fig = document.createElement('figure');
+      fig.className = 'viz';
+      fig.innerHTML = VZ.cabinetSVG(d.comp, data.settings, pxPerIn);
+      var cap = document.createElement('figcaption');
+      var pair = d.o.doorsAcross === 2;
+      cap.textContent = d.o.label +
+        (d.o.qty > 1 ? ' (×' + d.o.qty + ')' : '') +
+        ' — ' + (pair ? 'pair of doors, each ' : 'door ') +
+        F.format(d.comp.door.width) + '" × ' + F.format(d.comp.door.height) + '"';
+      fig.appendChild(cap);
+      wrap.appendChild(fig);
+    });
+  }
+
+  // -------------------------------------------------------------- sheets tab
+
+  var SHEET_INPUTS = {
+    source: document.getElementById('sheet-source'),
+    partW: document.getElementById('sheet-partW'),
+    partH: document.getElementById('sheet-partH'),
+    partQty: document.getElementById('sheet-partQty'),
+    size: document.getElementById('sheet-size'),
+    w: document.getElementById('sheet-w'),
+    l: document.getElementById('sheet-l'),
+    kerf: document.getElementById('sheet-kerf'),
+    trim: document.getElementById('sheet-trim'),
+    rotate: document.getElementById('sheet-rotate')
+  };
+
+  // populate the sheet-size dropdown from the standards + a custom entry
+  SM.STANDARD_SHEETS.forEach(function (s) {
+    var o = document.createElement('option');
+    o.value = s.key;
+    o.textContent = s.label;
+    SHEET_INPUTS.size.appendChild(o);
+  });
+  (function () {
+    var o = document.createElement('option');
+    o.value = 'custom';
+    o.textContent = 'Custom…';
+    SHEET_INPUTS.size.appendChild(o);
+  })();
+
+  function renderSheetInputs() {
+    var cfg = project.sheets;
+    SHEET_INPUTS.source.value = cfg.source;
+    SHEET_INPUTS.partW.value = cfg.partW;
+    SHEET_INPUTS.partH.value = cfg.partH;
+    SHEET_INPUTS.partQty.value = cfg.partQty;
+    SHEET_INPUTS.size.value = cfg.sheetKey;
+    SHEET_INPUTS.w.value = cfg.sheetW;
+    SHEET_INPUTS.l.value = cfg.sheetL;
+    SHEET_INPUTS.kerf.value = cfg.kerf;
+    SHEET_INPUTS.trim.value = cfg.trim;
+    SHEET_INPUTS.rotate.checked = !!cfg.allowRotate;
+    document.querySelectorAll('.sheet-custom-part').forEach(function (f) {
+      f.hidden = cfg.source !== 'custom';
+    });
+    document.querySelectorAll('.sheet-custom-size').forEach(function (f) {
+      f.hidden = cfg.sheetKey !== 'custom';
+    });
+  }
+
+  ['source', 'size'].forEach(function (name) {
+    SHEET_INPUTS[name].addEventListener('change', function () {
+      if (name === 'source') project.sheets.source = this.value;
+      else project.sheets.sheetKey = this.value;
+      saveProject();
+      renderSheetInputs();
+      renderSheets(compute());
+    });
+  });
+
+  [['partW', 'partW'], ['partH', 'partH'], ['w', 'sheetW'], ['l', 'sheetL'],
+    ['kerf', 'kerf'], ['trim', 'trim']].forEach(function (pair) {
+    SHEET_INPUTS[pair[0]].addEventListener('input', function () {
+      project.sheets[pair[1]] = this.value;
+      saveProject();
+      renderSheets(compute());
+    });
+  });
+
+  SHEET_INPUTS.partQty.addEventListener('input', function () {
+    project.sheets.partQty = parseInt(this.value, 10) || 1;
+    saveProject();
+    renderSheets(compute());
+  });
+
+  SHEET_INPUTS.rotate.addEventListener('change', function () {
+    project.sheets.allowRotate = this.checked;
+    saveProject();
+    renderSheets(compute());
+  });
+
+  /** Parts to nest, per the selected source. Returns {parts, errors:[]}. */
+  function sheetParts(data) {
+    var cfg = project.sheets;
+    var errors = [];
+    if (cfg.source === 'custom') {
+      var w = F.parse(cfg.partW);
+      var h = F.parse(cfg.partH);
+      var qty = parseInt(cfg.partQty, 10) || 0;
+      if (!w || F.isNegative(w) || F.isZero(w) || !h || F.isNegative(h) || F.isZero(h)) {
+        errors.push('Enter a valid custom part width and height.');
+        return { parts: [], errors: errors };
+      }
+      return { parts: [{ width: w, height: h, qty: Math.max(1, qty), label: 'Part' }], errors: errors };
+    }
+    if (cfg.source === 'doors') {
+      var parts = [];
+      data.perOpening.forEach(function (comp, i) {
+        if (comp.result && !comp.hasWarnings) {
+          parts.push({
+            width: comp.result.door.width,
+            height: comp.result.door.height,
+            qty: comp.result.doorCount,
+            label: data.openings[i].label
+          });
+        }
+      });
+      return { parts: parts, errors: errors };
+    }
+    // panels from the aggregated cut list
+    return {
+      parts: data.cutList.rows
+        .filter(function (r) { return r.part === 'Panel'; })
+        .map(function (r) {
+          return { width: r.width, height: r.length, qty: r.qty, label: r.labels.join(', ') };
+        }),
+      errors: errors
+    };
+  }
+
+  function sheetDims() {
+    var cfg = project.sheets;
+    if (cfg.sheetKey !== 'custom') {
+      var std = SM.STANDARD_SHEETS.find(function (s) { return s.key === cfg.sheetKey; }) ||
+        SM.STANDARD_SHEETS[0];
+      return { width: F.parse(std.width), length: F.parse(std.length), label: std.label };
+    }
+    var w = F.parse(cfg.sheetW);
+    var l = F.parse(cfg.sheetL);
+    if (!w || !l || F.isNegative(w) || F.isZero(w) || F.isNegative(l) || F.isZero(l)) return null;
+    return { width: w, length: l, label: F.format(w) + '" × ' + F.format(l) + '"' };
+  }
+
+  function renderSheets(data) {
+    var cfg = project.sheets;
+    var headline = document.getElementById('sheet-headline');
+    var figures = document.getElementById('sheet-figures');
+    var warnUl = document.getElementById('sheet-warnings');
+    var emptyNote = document.getElementById('sheet-empty');
+    figures.innerHTML = '';
+    warnUl.innerHTML = '';
+    headline.textContent = '';
+    document.getElementById('sheet-subtitle').textContent = '';
+
+    var kerf = F.parse(cfg.kerf);
+    var trim = F.parse(cfg.trim);
+    SHEET_INPUTS.kerf.classList.toggle('invalid', !kerf || F.isNegative(kerf));
+    SHEET_INPUTS.trim.classList.toggle('invalid', !trim || F.isNegative(trim));
+
+    var sp = sheetParts(data);
+    var dims = sheetDims();
+    var problems = sp.errors.slice();
+    if (!kerf || F.isNegative(kerf)) problems.push('Enter a valid saw kerf.');
+    if (!trim || F.isNegative(trim)) problems.push('Enter a valid edge trim.');
+    if (!dims) problems.push('Enter a valid custom sheet size.');
+
+    problems.forEach(function (msg) {
+      var li = document.createElement('li');
+      li.textContent = msg;
+      warnUl.appendChild(li);
+    });
+
+    var totalQty = sp.parts.reduce(function (n, p) { return n + p.qty; }, 0);
+    emptyNote.style.display = (totalQty && !problems.length) ? 'none' : '';
+    renderQuickRef(sp.parts, kerf, trim, cfg.allowRotate, problems.length > 0);
+    if (!totalQty || problems.length) return;
+
+    var opts = { kerf: kerf, trim: trim, allowRotate: cfg.allowRotate };
+    var res = SM.packParts(dims, sp.parts, opts);
+
+    var sourceName = cfg.source === 'doors' ? 'door' : (cfg.source === 'custom' ? 'part' : 'panel');
+    document.getElementById('sheet-subtitle').textContent =
+      '— ' + res.placedUnits + ' ' + sourceName + (res.placedUnits === 1 ? '' : 's') +
+      ' on ' + dims.label;
+
+    var totalUsed = res.sheets.reduce(function (n, s) { return n + s.usedArea; }, 0);
+    var avgUtil = res.sheets.length
+      ? Math.round((totalUsed / (res.sheets.length * res.sheetArea)) * 100)
+      : 0;
+    headline.textContent = res.sheets.length + ' sheet' + (res.sheets.length === 1 ? '' : 's') +
+      ' needed · ' + avgUtil + '% of the material used (kerf ' + F.format(kerf) + '", trim ' +
+      F.format(trim) + '"/side' + (cfg.allowRotate ? ', rotation allowed' : ', grain locked') + ')';
+
+    if (res.unplaced.length) {
+      var li = document.createElement('li');
+      var u = res.unplaced[0];
+      li.textContent = res.unplaced.length + ' part' + (res.unplaced.length === 1 ? '' : 's') +
+        ' won’t fit this sheet at all (e.g. ' + u.label + ', ' +
+        F.format(F.frac(u.w, 64)) + '" × ' + F.format(F.frac(u.h, 64)) + '").';
+      warnUl.appendChild(li);
+    }
+
+    var widthIn = F.toNumber(dims.width);
+    var lengthIn = F.toNumber(dims.length);
+    var scale = Math.min(5, 300 / lengthIn);
+    var MAX_DRAWN = 8;
+    res.sheets.slice(0, MAX_DRAWN).forEach(function (s, i) {
+      var fig = document.createElement('figure');
+      fig.className = 'viz';
+      fig.innerHTML = VZ.sheetSVG(s, {
+        widthIn: widthIn, lengthIn: lengthIn, trimIn: F.toNumber(trim)
+      }, scale);
+      var cap = document.createElement('figcaption');
+      cap.textContent = 'Sheet ' + (i + 1) + ' — ' + s.placements.length + ' part' +
+        (s.placements.length === 1 ? '' : 's') + ', ' + Math.round(s.utilization * 100) + '% used';
+      fig.appendChild(cap);
+      figures.appendChild(fig);
+    });
+    if (res.sheets.length > MAX_DRAWN) {
+      var more = document.createElement('p');
+      more.className = 'empty-note';
+      more.textContent = '… and ' + (res.sheets.length - MAX_DRAWN) + ' more identical-size sheets.';
+      figures.appendChild(more);
+    }
+  }
+
+  function renderQuickRef(parts, kerf, trim, allowRotate, broken) {
+    var tbody = document.querySelector('#sheet-quickref tbody');
+    tbody.innerHTML = '';
+    var totalQty = parts.reduce(function (n, p) { return n + p.qty; }, 0);
+
+    // "fits per sheet" only makes sense when every part is the same size
+    var singleSize = null;
+    if (parts.length && parts.every(function (p) {
+      return F.eq(p.width, parts[0].width) && F.eq(p.height, parts[0].height);
+    })) {
+      singleSize = parts[0];
+    }
+
+    SM.STANDARD_SHEETS.forEach(function (std) {
+      var sheet = { width: F.parse(std.width), length: F.parse(std.length) };
+      var tr = document.createElement('tr');
+      var cells = [std.label, '—', '—', '—'];
+
+      if (!broken && totalQty && kerf && trim) {
+        var opts = { kerf: kerf, trim: trim, allowRotate: allowRotate };
+        if (singleSize) {
+          var g = SM.gridCount(sheet, singleSize, opts);
+          cells[1] = g.count ? String(g.count) + (g.rotated ? ' ↻' : '') : 'none fit';
+        }
+        var res = SM.packParts(sheet, parts, opts);
+        if (res.placedUnits) {
+          var used = res.sheets.reduce(function (n, s) { return n + s.usedArea; }, 0);
+          cells[2] = String(res.sheets.length) +
+            (res.unplaced.length ? ' (+' + res.unplaced.length + ' won’t fit)' : '');
+          cells[3] = Math.round((used / (res.sheets.length * res.sheetArea)) * 100) + '%';
+        } else if (totalQty) {
+          cells[2] = 'won’t fit';
+        }
+      }
+
+      cells.forEach(function (text, i) {
+        var td = document.createElement('td');
+        td.textContent = text;
+        if (i > 0) td.className = 'num';
+        tr.appendChild(td);
+      });
+      tbody.appendChild(tr);
+    });
+  }
+
   // ---------------------------------------------------------- import/export
 
   document.getElementById('export-project').addEventListener('click', function () {
@@ -534,10 +855,12 @@
         }
         project = Object.assign(defaultProject(), data);
         project.settings = Object.assign(defaultProject().settings, data.settings || {});
+        project.sheets = Object.assign(defaultSheetConfig(), data.sheets || {});
         project.openings.forEach(function (op) { if (!op.id) op.id = uid(); });
         saveProject();
         renderMode();
         renderSettingsInputs();
+        renderSheetInputs();
         renderAll();
       } catch (e) {
         alert('That file does not look like a door-project JSON export.');
@@ -682,10 +1005,13 @@
     renderBreakdown(data);
     renderCutList(data);
     renderWarnings(data);
+    renderCabinet(data);
+    renderSheets(data);
   }
 
   renderMode();
   renderSettingsInputs();
+  renderSheetInputs();
   renderAll();
   renderInventory();
 })();

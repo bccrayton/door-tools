@@ -246,6 +246,41 @@ button.btn.danger-text {
 
 .approx-note { color: var(--muted); font-size: 0.8rem; margin-top: 0.4rem; }
 
+/* Visualizations */
+.viz-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.25rem;
+  align-items: flex-start;
+}
+
+figure.viz {
+  margin: 0;
+  max-width: 100%;
+}
+
+figure.viz svg { display: block; max-width: 100%; height: auto; }
+
+figure.viz figcaption {
+  font-size: 0.8rem;
+  color: var(--muted);
+  margin-top: 0.35rem;
+  max-width: 260px;
+  line-height: 1.35;
+}
+
+.field.checkbox .check-line {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-weight: 400;
+  color: var(--ink);
+  font-size: 0.9rem;
+  padding: 0.45rem 0;
+}
+
+.field.checkbox input[type="checkbox"] { width: auto; }
+
 /* Print: cut list only */
 @media print {
   body { background: #fff; }
