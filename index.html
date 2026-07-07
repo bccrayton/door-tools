@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Shaker Door Tools</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<header class="app-header">
+  <h1>Shaker Door Tools</h1>
+  <p class="tagline">Calculator · cut list · inventory — inset &amp; overlay frame-and-panel doors</p>
+  <nav class="tabs" role="tablist">
+    <button role="tab" aria-selected="true" data-tab="calculator">Calculator</button>
+    <button role="tab" aria-selected="false" data-tab="cutlist">Cut List</button>
+    <button role="tab" aria-selected="false" data-tab="inventory">Inventory</button>
+  </nav>
+</header>
+
+<main>
+
+<!-- ============ CALCULATOR ============ -->
+<section class="tab-panel" id="tab-calculator" role="tabpanel">
+
+  <div class="card no-print">
+    <h2>Door style</h2>
+    <div class="mode-toggle" id="mode-toggle">
+      <button type="button" data-mode="inset" aria-pressed="true">Inset</button>
+      <button type="button" data-mode="overlay" aria-pressed="false">Overlay</button>
+    </div>
+
+    <div class="settings-grid" id="settings-grid">
+      <div class="field" data-modes="inset">
+        <label for="set-gapPerSide">Gap per side</label>
+        <input id="set-gapPerSide" data-setting="gapPerSide" inputmode="text" spellcheck="false">
+      </div>
+      <div class="field" data-modes="overlay">
+        <label for="set-overlay">Overlay per side</label>
+        <input id="set-overlay" data-setting="overlay" inputmode="text" spellcheck="false">
+      </div>
+      <div class="field" data-modes="overlay">
+        <label for="set-pairGap">Gap between pair</label>
+        <input id="set-pairGap" data-setting="pairGap" inputmode="text" spellcheck="false">
+      </div>
+      <div class="field">
+        <label for="set-stileWidth">Stile width</label>
+        <input id="set-stileWidth" data-setting="stileWidth" inputmode="text" spellcheck="false">
+      </div>
+      <div class="field">
+        <label for="set-railWidth">Rail width</label>
+        <input id="set-railWidth" data-setting="railWidth" inputmode="text" spellcheck="false">
+      </div>
+      <div class="field">
+        <label for="set-tongueLength">Tongue / groove depth</label>
+        <input id="set-tongueLength" data-setting="tongueLength" inputmode="text" spellcheck="false">
+      </div>
+      <div class="field">
+        <label for="set-panelClearance">Panel clearance per side</label>
+        <input id="set-panelClearance" data-setting="panelClearance" inputmode="text" spellcheck="false">
+      </div>
+      <div class="field">
+        <label for="set-frameThickness">Frame thickness</label>
+        <input id="set-frameThickness" data-setting="frameThickness" inputmode="text" spellcheck="false">
+      </div>
+      <div class="field">
+        <label for="set-panelThickness">Panel thickness</label>
+        <input id="set-panelThickness" data-setting="panelThickness" inputmode="text" spellcheck="false">
+      </div>
+      <div class="field">
+        <label for="set-roundDenom">Round cut list to</label>
+        <select id="set-roundDenom" data-setting-int="roundDenom">
+          <option value="16">nearest 1/16"</option>
+          <option value="32" selected>nearest 1/32"</option>
+          <option value="64">nearest 1/64"</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Openings <span class="hint">— measure the cabinet opening; enter sizes like <code>14 5/8</code>, <code>3/4</code>, or <code>14.625</code></span></h2>
+    <div class="table-scroll">
+      <table id="openings-table">
+        <thead>
+          <tr>
+            <th>Label</th>
+            <th>Opening W</th>
+            <th>Opening H</th>
+            <th>Doors</th>
+            <th>Qty</th>
+            <th>Door size (each)</th>
+            <th class="no-print"></th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <p class="empty-note" id="openings-empty">No openings yet — add one below.</p>
+    <div class="toolbar no-print">
+      <button class="btn primary" id="add-opening">+ Add opening</button>
+      <button class="btn" id="export-project">Export project</button>
+      <button class="btn" id="import-project">Import project</button>
+      <input type="file" id="import-file" accept="application/json" hidden>
+    </div>
+    <ul class="warnings" id="calc-warnings"></ul>
+  </div>
+
+  <div class="card" id="breakdown-card">
+    <h2>Per-door breakdown</h2>
+    <div class="table-scroll">
+      <table id="breakdown-table">
+        <thead>
+          <tr>
+            <th>Opening</th>
+            <th>Part</th>
+            <th class="num">Qty/door</th>
+            <th class="num">Thickness</th>
+            <th class="num">Width</th>
+            <th class="num">Length</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <p class="empty-note" id="breakdown-empty">Add an opening to see stile, rail, and panel sizes.</p>
+  </div>
+
+</section>
+
+<!-- ============ CUT LIST ============ -->
+<section class="tab-panel" id="tab-cutlist" role="tabpanel" hidden>
+  <div class="card">
+    <h2>Cut list <span class="hint" id="cutlist-subtitle"></span></h2>
+    <div class="table-scroll">
+      <table id="cutlist-table">
+        <thead>
+          <tr>
+            <th>Part</th>
+            <th>Material</th>
+            <th class="num">Thickness</th>
+            <th class="num">Width</th>
+            <th class="num">Length</th>
+            <th class="num">Qty</th>
+            <th>For</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <p class="empty-note" id="cutlist-empty">Add openings on the Calculator tab to build a cut list.</p>
+    <p class="summary-line" id="cutlist-summary"></p>
+    <p class="approx-note" id="cutlist-approx" hidden>* length or width was rounded to the selected grid; the exact value fell between marks.</p>
+    <div class="toolbar no-print">
+      <button class="btn primary" id="print-cutlist">Print</button>
+      <button class="btn" id="csv-cutlist">Download CSV</button>
+      <button class="btn" id="copy-cutlist">Copy as text</button>
+    </div>
+    <ul class="warnings" id="cutlist-warnings"></ul>
+  </div>
+</section>
+
+<!-- ============ INVENTORY ============ -->
+<section class="tab-panel" id="tab-inventory" role="tabpanel" hidden>
+  <div class="card">
+    <h2>Stock on hand <span class="hint">— rough lumber and panel stock in the shop</span></h2>
+    <div class="table-scroll">
+      <table id="inventory-table">
+        <thead>
+          <tr>
+            <th>Material</th>
+            <th>Species</th>
+            <th class="num">Thickness</th>
+            <th class="num">Width</th>
+            <th class="num">Length</th>
+            <th class="num">Qty</th>
+            <th>Notes</th>
+            <th class="no-print"></th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <p class="empty-note" id="inventory-empty">Nothing in stock yet — add boards below.</p>
+    <div class="toolbar no-print">
+      <button class="btn primary" id="add-stock">+ Add stock</button>
+    </div>
+    <p class="summary-line" id="inventory-summary"></p>
+  </div>
+</section>
+
+</main>
+
+<script src="js/fraction.js"></script>
+<script src="js/doormath.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>

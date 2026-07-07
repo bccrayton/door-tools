@@ -1,0 +1,9 @@
+{
+  "name": "shaker-door-tools",
+  "version": "0.1.0",
+  "description": "Calculator, cut list, and inventory tools for inset and overlay shaker cabinet doors",
+  "private": true,
+  "scripts": {
+    "test": "node --test tests/"
+  }
+}
